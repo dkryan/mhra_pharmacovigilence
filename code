@@ -1,0 +1,91 @@
+import pandas as pd 
+import numpy as np
+import os
+from IPython.display import display
+
+df = pd.DataFrame({'symptoms': ['0'], 'count': np.nan})
+
+for folder in enumerate(os.listdir()): 
+    print(folder[0])
+    if folder[1].split(" ")[-1] == '2': 
+        pass 
+    elif folder[1] == '.DS_Store': 
+        pass 
+    elif folder[1] == 'Untitled.ipynb': 
+        pass 
+    elif folder[1] == 'Untitled1.ipynb': 
+        pass
+    elif folder[1] == '.Untitled-Copy1.ipynb.icloud': 
+        pass 
+    elif folder[1] == '.ipynb_checkpoints': 
+        pass 
+    else: 
+        print(folder[1])
+        case = pd.read_csv(f"{folder[1]}/case")
+        event = pd.read_csv(f"{folder[1]}/event")
+        merged = pd.merge(case, event, how='left', on='ADR')
+        serious = merged[merged['NONSERIOUS_SERIOUS_FATAL_NSF']=='S']
+        year = serious[serious['RECVD_YEAR']>=2009]
+        symptoms = list(year['PT'])
+        symptom_set = set(symptoms)
+        
+        symptom_dict = {'symptoms': '0'}
+        for symptom in symptom_set:
+            number = symptoms.count(symptom)
+            symptom_dict[symptom] = number
+            
+        output = pd.DataFrame.from_dict(symptom_dict, orient='index')
+        output = output.reset_index()
+        output.columns = ['symptoms', f'{folder[1]}_count']
+        df = pd.merge(df, output, how='outer', on='symptoms')
+        
+        
+        
+ final = df.set_index('symptoms')
+ final.drop(columns=['count'], inplace=True)
+ final = final.iloc[2:]
+ final.to_csv('mhra_yellow_card_300321.csv')
+ 
+ 
+ toc = df[['symptoms', 'TOCILIZUMAB_count']].dropna()
+ 
+ def prr(df, drug_df, symptom):
+    col_name = toc.columns[1]
+    temp = df.drop(columns=[f'{col_name}'])
+    count = int(drug_df[drug_df['symptoms']== symptom][f'{col_name}']) 
+    
+    if count >=3: 
+        #print(symptom)
+                   
+        a = int(drug_df[drug_df['symptoms']==symptom][f'{col_name}'])
+        b = int(drug_df[f'{col_name}'].sum()-int(drug_df[drug_df['symptoms']==symptom][f'{col_name}']))
+        c = int(temp[temp['symptoms']==symptom].transpose()[1:].sum())
+        d = int(temp[temp['symptoms']!=symptom].transpose()[1:].sum().sum())
+        
+        prr = (a/(a+b))/(c/(c+d))
+        
+        s = np.sqrt(1/a+1/c-1/(a+b)-1/(c+d))
+        
+        lower_ci = np.exp(np.log(prr)-1.96*s)
+        upper_ci = np.exp(np.log(prr)+1.96*s)
+        
+        return(prr, lower_ci, upper_ci) 
+    else: 
+        return(np.nan)
+        
+        
+   prr(df, toc, 'Chest pain')
+   
+   
+toc_prr = {}
+
+for symptom in toc['symptoms']: 
+    toc_prr[symptom] = prr(df, toc, symptom)
+    
+
+toc_results = pd.DataFrame.from_dict(toc_prr, orient='index').dropna()
+
+final_toc = toc_results[(toc_results[0]>=2) & (toc_results[1]>=1)]
+
+final_toc.to_csv('tocilizumab_prr.csv')
+ 
